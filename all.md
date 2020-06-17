@@ -27,7 +27,18 @@ LeaderRequestProcessor -> PrepRequestProcessor -> ProposalRequestProcessor -> Co
 依次分析上面的每个Processor的作用：
 * LeaderRequestProcessor 负责本地session的更新 //todo session相关
 * PrepRequestProcessor 初始化与request关联的事物
-* ProposalRequestProcessor todo
+* ProposalRequestProcessor 有一个重要的事情是在这里做的，就是leader接收到写请求后，向其他的 follower 发送 proposal，如下面的代码所示，通过调用 `getLeader().propose(request)`来实现。
+```java
+           if (request.getHdr() != null) {
+                // We need to sync and get consensus on any transactions
+                try {
+                    zks.getLeader().propose(request);
+                } catch (XidRolloverException e) {
+                    throw new RequestProcessorException(e.getMessage(), e);
+                }
+                syncProcessor.processRequest(request);
+            }
+```
 * CommitProcessor 用来匹配本地 submitted request和发过来的committed request
 * ToBeAppliedRequestProcessor
 * FinalRequestProcessor 
