@@ -7,6 +7,11 @@ session 在概念上指 client 端与 server端的一个会话，
 * Global session 全局session，在每个server上都存在
 * local session 只在当前请求的server上存在，但只能进行读操作，要是要进行写操作，就得升级为全局session
 
+## 服务端 session 相关
+* SessionTracker
+负责 session 的创建和管理
+
+
 ## session 的创建
 考虑到 client 可以连 zk 集群中的任意一个节点，可以是 leader 也可以是 follower。
 所以创建 session 的逻辑是在 ZookeeperServer 中的，逻辑为接受到一个新的连接请求便创建一个 session，即创建一个类型为`OpCode.createSessio`的`Request`。
@@ -37,3 +42,17 @@ session 在概念上指 client 端与 server端的一个会话，
                 return;
             }
 ```
+
+## Session 的保持活
+简单描述下，服务端定期检查 session 是否过期，客户端为了让 session 保持住，不断的发送PING 来触发服务端对 session 的重新激活，也就是 触发了 `touchSession`这个动作。
+
+
+
+
+
+
+
+
+
+
+
