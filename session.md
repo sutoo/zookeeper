@@ -6,6 +6,50 @@ session 在概念上指 client 端与 server端的一个会话，
 在 server 端， session 有两种，他们可以互相转化。
 * Global session 全局session，在每个server上都存在
 * local session 只在当前请求的server上存在，但只能进行读操作，要是要进行写操作，就得升级为全局session
+## session 数据的持久化
+todo 参考下关于zk的持久化相关
+## local session 的引入
+参照这个 zookeeper 的 jira ：https://issues.apache.org/jira/browse/ZOOKEEPER-1147
+考虑有大量的只读 client 连接集群的时候，因为对创建 session 的处理和其他的 update 操作是一样的，所以 session 的创建/删除，很容易就把整个集群的资源耗尽。由此引出了 `local session`来应对大量连接时产生的问题。
+
+local session的特点：
+* 不能创建临时节点
+* 一旦丢失了，就无法通过 session id 和 password 重建
+* session info 只会存在于连接着的当前 zk server，leader 对这个 session 无感知，也不会将 session 信息写入磁盘
+* session 超时也是由当前连接着的 zk server 来负责。
+在接口层面引入的改动：
+* client 创建连接的时候，可以指定是否为 local session
+* local session 会被升级为 global session，当执行写操作的时候
+
+sessin 升级的逻辑：
+对于 follower 来说，在`FollowerRequestProcessor`中，处理request的时候，先会判断下是否需要升级 session.如果需要升级，则将 upgradeRequest 先放入 queue 等待后续转发给 leader。 这个 upgradeRequest 的类型为 `OpCode.createSessio`。
+```java
+    public void processRequest(Request request) {
+        if (!finished) {
+            // Before sending the request, check if the request requires a
+            // global session and what we have is a local session. If so do
+            // an upgrade.
+            Request upgradeRequest = null;
+            try {
+                upgradeRequest = zks.checkUpgradeSession(request);
+            } catch (KeeperException ke) {
+                if (request.getHdr() != null) {
+                    request.getHdr().setType(OpCode.error);
+                    request.setTxn(new ErrorTxn(ke.code().intValue()));
+                }
+                request.setException(ke);
+                LOG.info("Error creating upgrade request",  ke);
+            } catch (IOException ie) {
+                LOG.error("Unexpected error in upgrade", ie);
+            }
+            if (upgradeRequest != null) {
+                queuedRequests.add(upgradeRequest);
+            }
+            queuedRequests.add(request);
+        }
+    }
+```
+
 
 ## 服务端 session 相关
 * SessionTracker
